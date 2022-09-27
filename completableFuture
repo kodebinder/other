@@ -1,0 +1,20 @@
+public static ThreadPoolExecutor getExecutorService(int poolSize, int maxPoolSize{
+  int threadPoolshutDownTime = 10L;
+  ThreadPoolExecutor executorService= new ThreadPoolExecutor(poolSize, maxPoolSize, threadPoolshutDownTime, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+  executorService.allowCoreThreadTimeOut(true); // allows the threadpool to shutdown if no task is assigned
+  return executorService;
+}
+
+public void a(List<Object> list) throws InterruptedException, ExecutionException  {
+
+  List<Callable<Boolean>> callables = new ArrayList<>(list.size());
+  list.forEach(object ->callables.add(() -> return asynchMethod(object)));
+
+  for (Future<Boolean> booleanFuture : this.getExecutorService(1,4).invokeAll(callables)) {
+            booleanFuture.get(); //this will wait for the callables to be done!
+  }
+}
+
+private boolean asynchMethod(Object o) {
+    return o.doMagic(); //doMagic returns a boolean when completed
+}
