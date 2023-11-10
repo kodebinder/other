@@ -1,6 +1,45 @@
-#!/usr/local/bin/perl
-open(NEW, ">/Users/pushkarchauhan91/Documents/testing/showLocalDateAndTime.txt");
-$datestring=localtime();
-$message="hello world - $datestring";
-print NEW $message;
-close(NEW);
+public static String convertPouTradeDetailsToJson(PouTradeDetails pouTradeDetails) {
+        if (pouTradeDetails == null) {
+            return "{}";
+        }
+
+        Class<?> clazz = pouTradeDetails.getClass();
+        Field[] fields = clazz.getDeclaredFields();
+
+        Map<String, Object> jsonMap = new HashMap<>();
+        try {
+            jsonMap = Stream.of(fields)
+                    .peek(field -> field.setAccessible(true))
+                    .collect(Collectors.toMap(Field::getName, field -> {
+                        try {
+                            return field.get(pouTradeDetails);
+                        } catch (IllegalAccessException e) {
+                            e.printStackTrace();
+                            return null;
+                        }
+                    }));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        String json = jsonMap.entrySet().stream()
+                .map(entry -> "\"" + entry.getKey() + "\": " +
+                        (entry.getValue() != null ?
+                                (entry.getValue() instanceof List ?
+                                        convertListToJson((List<?>) entry.getValue()) :
+                                        "\"" + entry.getValue() + "\"") :
+                                "null"))
+                .collect(Collectors.joining(", ", "{", "}"));
+
+        return json;
+    }
+
+    private static String convertListToJson(List<?> list) {
+        return "[" + list.stream()
+                .map(JsonConverter::convertObjectToJson)
+                .collect(Collectors.joining(", ")) + "]";
+    }
+
+    private static String convertObjectToJson(Object obj) {
+        return obj != null ? "\"" + obj.toString() + "\"" : "null";
+    }
