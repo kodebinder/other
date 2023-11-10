@@ -1,45 +1,74 @@
-public static String convertPouTradeDetailsToJson(PouTradeDetails pouTradeDetails) {
-        if (pouTradeDetails == null) {
-            return "{}";
-        }
-
-        Class<?> clazz = pouTradeDetails.getClass();
-        Field[] fields = clazz.getDeclaredFields();
-
-        Map<String, Object> jsonMap = new HashMap<>();
+@Async("customAsyncExecutor")
+    public CompletableFuture<Void> process(JSONObject json) {
         try {
-            jsonMap = Stream.of(fields)
-                    .peek(field -> field.setAccessible(true))
-                    .collect(Collectors.toMap(Field::getName, field -> {
-                        try {
-                            return field.get(pouTradeDetails);
-                        } catch (IllegalAccessException e) {
-                            e.printStackTrace();
-                            return null;
+            String tradeId = json.optString("TRADE_ID");
+            String user = json.optString("USER");
+
+            ObjectMapper mapper = new ObjectMapper();
+
+            List<PouMarkOffDtl> matchedPous = convertList(json, "MATCHED_POU", new TypeReference<List<PouMarkOffDtl>>() {});
+
+            if (tradeId != null && user != null && matchedPous != null) {
+                PouTradeDetail pouTradeDetail = getPouTradeDetail(tradeId, user, matchedPous);
+                if (pouTradeDetail != null) {
+                    PouTradeDetails pouTradeDetails = pouTradeDetail.getResponse();
+
+                    // Convert to JSON while maintaining the order of fields
+                    String response = convertObjectToJson(pouTradeDetails);
+
+                    String trackingId = UUID.randomUUID().toString();
+
+                    TradeMaster tradeMaster = tradeMasterRepo.findFirstByTradeRef(tradeId);
+
+                    if (tradeMaster != null) {
+                        Country country = countryRepo.findByCode(tradeMaster.getEntity());
+
+                        if (country != null && country.isCdulaeEnabled()) {
+                            sendJMSMessageToSolace(response, trackingId);
+                            pouTradeDetailRepo.save(pouTradeDetail);
+                            log.info("Info saved to db");
                         }
-                    }));
+                    }
+                }
+            }
+            sleep();
         } catch (Exception e) {
+            // Handle the exception appropriately (logging, rethrowing, etc.)
             e.printStackTrace();
         }
 
-        String json = jsonMap.entrySet().stream()
-                .map(entry -> "\"" + entry.getKey() + "\": " +
-                        (entry.getValue() != null ?
-                                (entry.getValue() instanceof List ?
-                                        convertListToJson((List<?>) entry.getValue()) :
-                                        "\"" + entry.getValue() + "\"") :
-                                "null"))
-                .collect(Collectors.joining(", ", "{", "}"));
-
-        return json;
+        return CompletableFuture.completedFuture(null);
     }
 
-    private static String convertListToJson(List<?> list) {
-        return "[" + list.stream()
-                .map(JsonConverter::convertObjectToJson)
-                .collect(Collectors.joining(", ")) + "]";
+    private <T> List<T> convertList(JSONObject json, String key, TypeReference<List<T>> typeReference) {
+        return Optional.ofNullable(json.opt(key))
+                .map(obj -> {
+                    try {
+                        return new ObjectMapper().readValue(obj.toString(), typeReference);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
-    private static String convertObjectToJson(Object obj) {
-        return obj != null ? "\"" + obj.toString() + "\"" : "null";
+    private String convertObjectToJson(Object obj) {
+        Map<String, Object> orderedMap = new LinkedHashMap<>();
+        Arrays.stream(obj.getClass().getDeclaredFields())
+                .forEach(field -> {
+                    try {
+                        field.setAccessible(true);
+                        orderedMap.put(field.getName(), field.get(obj));
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+        try {
+            return new ObjectMapper().writeValueAsString(orderedMap);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
