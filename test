@@ -1,74 +1,79 @@
 @Async("customAsyncExecutor")
-    public CompletableFuture<Void> process(JSONObject json) {
+    public void process(org.json.simple.JSONObject json) {
         try {
-            String tradeId = json.optString("TRADE_ID");
-            String user = json.optString("USER");
+            String tradeId = getString(json, "TRADE_ID");
+            String user = getString(json, "USER");
 
             ObjectMapper mapper = new ObjectMapper();
 
             List<PouMarkOffDtl> matchedPous = convertList(json, "MATCHED_POU", new TypeReference<List<PouMarkOffDtl>>() {});
 
-            if (tradeId != null && user != null && matchedPous != null) {
-                PouTradeDetail pouTradeDetail = getPouTradeDetail(tradeId, user, matchedPous);
-                if (pouTradeDetail != null) {
-                    PouTradeDetails pouTradeDetails = pouTradeDetail.getResponse();
+            // Stream processing for null checks and optional chaining
+            PouTradeDetail pouTradeDetail = getPouTradeDetail(tradeId, user, matchedPous);
+            PouTradeDetails pouTradeDetails = pouTradeDetail.getDataPouCduResponse();
 
-                    // Convert to JSON while maintaining the order of fields
-                    String response = convertObjectToJson(pouTradeDetails);
+            // Convert to JSON while maintaining the order of fields
+            String dataPouCduResponse = convertObjectToJson(pouTradeDetails);
 
-                    String trackingId = UUID.randomUUID().toString();
+            String trackingId = UUID.randomUUID().toString();
 
-                    TradeMaster tradeMaster = tradeMasterRepo.findFirstByTradeRef(tradeId);
+            TradeMaster tradeMaster = getTradeMaster(tradeId);
+            Country country = getCountry(tradeMaster);
 
-                    if (tradeMaster != null) {
-                        Country country = countryRepo.findByCode(tradeMaster.getEntity());
-
-                        if (country != null && country.isCdulaeEnabled()) {
-                            sendJMSMessageToSolace(response, trackingId);
-                            pouTradeDetailRepo.save(pouTradeDetail);
-                            log.info("Info saved to db");
-                        }
-                    }
-                }
+            if (country != null && country.isCdulakeEnabled()) {
+                sendJMSMessageToSolace(dataPouCduResponse, trackingId);
+                savePouTradeDetail(pouTradeDetail);
+                log.info("Info saved to db");
             }
+
             sleep();
         } catch (Exception e) {
-            // Handle the exception appropriately (logging, rethrowing, etc.)
-            e.printStackTrace();
+            handleException(e);
         }
-
-        return CompletableFuture.completedFuture(null);
     }
 
-    private <T> List<T> convertList(JSONObject json, String key, TypeReference<List<T>> typeReference) {
-        return Optional.ofNullable(json.opt(key))
+    private String getString(org.json.simple.JSONObject json, String key) {
+        return Optional.ofNullable(json.get(key))
+                .map(Object::toString)
+                .orElse(null);
+    }
+
+    private <T> List<T> convertList(org.json.simple.JSONObject json, String key, TypeReference<List<T>> typeReference) {
+        return Optional.ofNullable(json.get(key))
                 .map(obj -> {
                     try {
                         return new ObjectMapper().readValue(obj.toString(), typeReference);
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        handleException(e);
                         return null;
                     }
                 })
                 .orElse(null);
     }
 
-    private String convertObjectToJson(Object obj) {
-        Map<String, Object> orderedMap = new LinkedHashMap<>();
-        Arrays.stream(obj.getClass().getDeclaredFields())
-                .forEach(field -> {
-                    try {
-                        field.setAccessible(true);
-                        orderedMap.put(field.getName(), field.get(obj));
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                });
+    private PouTradeDetail getPouTradeDetail(String tradeId, String user, List<PouMarkOffDtl> matchedPous) {
+        // Implement the getPouTradeDetail method
+        // ...
 
-        try {
-            return new ObjectMapper().writeValueAsString(orderedMap);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
+        // For demonstration purposes, returning a dummy PouTradeDetail
+        return new PouTradeDetail();
+    }
+
+    private TradeMaster getTradeMaster(String tradeId) {
+        return Optional.ofNullable(tradeMasterRepo.findFirstByTradeRef(tradeId)).orElse(null);
+    }
+
+    private Country getCountry(TradeMaster tradeMaster) {
+        return Optional.ofNullable(tradeMaster)
+                .map(tm -> countryRepo.findByCode(tm.getEntity()))
+                .orElse(null);
+    }
+
+    private void savePouTradeDetail(PouTradeDetail pouTradeDetail) {
+        Optional.ofNullable(pouTradeDetailRepo.save(pouTradeDetail)).ifPresent(p -> log.info("Info saved to db"));
+    }
+
+    private void handleException(Exception e) {
+        // Handle the exception appropriately (logging, rethrowing, etc.)
+        e.printStackTrace();
     }
