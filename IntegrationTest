@@ -1,0 +1,100 @@
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(SpringExtension.class)
+@SpringBootTest
+class PouSSJobsTest {
+
+    @Autowired
+    private ApplicationContext context;
+
+    @MockBean(name = "ExpiredJobRunner")
+    private PouSSJobRunner expiredJobRunner;
+
+    @MockBean(name = "RetriggerJobRunner")
+    private PouSSJobRunner retriggerJobRunner;
+
+    @MockBean(name = "FXQueryJobRunner")
+    private PouSSJobRunner fxQueryJobRunner;
+
+    @MockBean(name = "NetSummaryReportJobRunner")
+    private PouSSJobRunner netSummaryReportJobRunner;
+
+    @Test
+    void testMainMethodWithNoArguments() {
+        String[] args = new String[0];
+        PouSSJobs.main(args);
+
+        // Verify the expected behavior when no arguments are provided
+        verifyNoInteractions(expiredJobRunner, retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
+        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
+        assertEquals(999, exitCodeEvent.getExitCode());
+    }
+
+    @Test
+    void testMainMethodWithValidArguments() {
+        String[] args = {"EXPIRED", "arg1", "arg2"};
+        when(expiredJobRunner.execute(anyList())).thenReturn(true);
+
+        PouSSJobs.main(args);
+
+        // Verify the expected behavior when valid arguments are provided for the EXPIRED job
+        verify(expiredJobRunner, times(1)).execute(Arrays.asList("arg1", "arg2"));
+        verifyNoInteractions(retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
+        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
+        assertEquals(0, exitCodeEvent.getExitCode());
+    }
+
+    @Test
+    void testMainMethodWithInvalidArguments() {
+        String[] args = {"INVALID_JOB_NAME"};
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> PouSSJobs.main(args));
+
+        // Verify the expected behavior when invalid arguments are provided
+        assertEquals("No enum constant com.scb.fm.pou.ss.AppEnums.EodJob.INVALID_JOB_NAME", exception.getMessage());
+    }
+
+    @Test
+    void testGetParams() {
+        String[] args = {"jobName", "arg1", "arg2"};
+        List<String> params = PouSSJobs.getParams(args);
+
+        // Verify that the params list is correctly extracted from the arguments
+        assertEquals(Arrays.asList("arg1", "arg2"), params);
+    }
+
+    @Test
+    void testPrintArgs() {
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(outContent));
+
+        String[] args = {"arg1", "arg2"};
+        PouSSJobs.printArgs(args);
+
+        // Verify that the arguments are printed to the console
+        assertEquals("->arg1\n->arg2\n", outContent.toString());
+
+        System.setOut(System.out); // Reset System.out to the original PrintStream
+    }
+
+    // Add more test methods for other utility methods
+
+    // You can add more test methods to cover other scenarios in your application
+
+}
