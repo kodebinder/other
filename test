@@ -1,79 +1,102 @@
-@Async("customAsyncExecutor")
-    public void process(org.json.simple.JSONObject json) {
-        try {
-            String tradeId = getString(json, "TRADE_ID");
-            String user = getString(json, "USER");
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 
-            ObjectMapper mapper = new ObjectMapper();
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.List;
 
-            List<PouMarkOffDtl> matchedPous = convertList(json, "MATCHED_POU", new TypeReference<List<PouMarkOffDtl>>() {});
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.*;
 
-            // Stream processing for null checks and optional chaining
-            PouTradeDetail pouTradeDetail = getPouTradeDetail(tradeId, user, matchedPous);
-            PouTradeDetails pouTradeDetails = pouTradeDetail.getDataPouCduResponse();
+@ExtendWith(MockitoExtension.class)
+class PouSSJobsTest {
 
-            // Convert to JSON while maintaining the order of fields
-            String dataPouCduResponse = convertObjectToJson(pouTradeDetails);
+    @InjectMocks
+    private PouSSJobs pouSSJobs;
 
-            String trackingId = UUID.randomUUID().toString();
+    @Mock(name = "ExpiredJobRunner")
+    private PouSSJobRunner expiredJobRunner;
 
-            TradeMaster tradeMaster = getTradeMaster(tradeId);
-            Country country = getCountry(tradeMaster);
+    @Mock(name = "RetriggerJobRunner")
+    private PouSSJobRunner retriggerJobRunner;
 
-            if (country != null && country.isCdulakeEnabled()) {
-                sendJMSMessageToSolace(dataPouCduResponse, trackingId);
-                savePouTradeDetail(pouTradeDetail);
-                log.info("Info saved to db");
-            }
+    @Mock(name = "FXQueryJobRunner")
+    private PouSSJobRunner fxQueryJobRunner;
 
-            sleep();
-        } catch (Exception e) {
-            handleException(e);
-        }
+    @Mock(name = "NetSummaryReportJobRunner")
+    private PouSSJobRunner netSummaryReportJobRunner;
+
+    @Mock
+    private ApplicationContext context;
+
+    @Test
+    void testMainMethodWithNoArguments() {
+        String[] args = new String[0];
+        pouSSJobs.main(args);
+
+        // Verify the expected behavior when no arguments are provided
+        verifyNoInteractions(expiredJobRunner, retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
+        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
+        assertEquals(999, exitCodeEvent.getExitCode());
     }
 
-    private String getString(org.json.simple.JSONObject json, String key) {
-        return Optional.ofNullable(json.get(key))
-                .map(Object::toString)
-                .orElse(null);
+    @Test
+    void testMainMethodWithValidArguments() {
+        String[] args = {"EXPIRED", "arg1", "arg2"};
+        when(expiredJobRunner.execute(anyList())).thenReturn(true);
+
+        pouSSJobs.main(args);
+
+        // Verify the expected behavior when valid arguments are provided for the EXPIRED job
+        verify(expiredJobRunner, times(1)).execute(Arrays.asList("arg1", "arg2"));
+        verifyNoInteractions(retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
+        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
+        assertEquals(0, exitCodeEvent.getExitCode());
     }
 
-    private <T> List<T> convertList(org.json.simple.JSONObject json, String key, TypeReference<List<T>> typeReference) {
-        return Optional.ofNullable(json.get(key))
-                .map(obj -> {
-                    try {
-                        return new ObjectMapper().readValue(obj.toString(), typeReference);
-                    } catch (Exception e) {
-                        handleException(e);
-                        return null;
-                    }
-                })
-                .orElse(null);
+    @Test
+    void testMainMethodWithInvalidArguments() {
+        String[] args = {"INVALID_JOB_NAME"};
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> pouSSJobs.main(args));
+
+        // Verify the expected behavior when invalid arguments are provided
+        assertEquals("No enum constant com.scb.fm.pou.ss.AppEnums.EodJob.INVALID_JOB_NAME", exception.getMessage());
     }
 
-    private PouTradeDetail getPouTradeDetail(String tradeId, String user, List<PouMarkOffDtl> matchedPous) {
-        // Implement the getPouTradeDetail method
-        // ...
+    @Test
+    void testGetParams() {
+        String[] args = {"jobName", "arg1", "arg2"};
+        List<String> params = pouSSJobs.getParams(args);
 
-        // For demonstration purposes, returning a dummy PouTradeDetail
-        return new PouTradeDetail();
+        // Verify that the params list is correctly extracted from the arguments
+        assertEquals(Arrays.asList("arg1", "arg2"), params);
     }
 
-    private TradeMaster getTradeMaster(String tradeId) {
-        return Optional.ofNullable(tradeMasterRepo.findFirstByTradeRef(tradeId)).orElse(null);
+    @Test
+    void testPrintArgs() {
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(outContent));
+
+        String[] args = {"arg1", "arg2"};
+        pouSSJobs.printArgs(args);
+
+        // Verify that the arguments are printed to the console
+        assertEquals("->arg1\n->arg2\n", outContent.toString());
+
+        System.setOut(System.out); // Reset System.out to the original PrintStream
     }
 
-    private Country getCountry(TradeMaster tradeMaster) {
-        return Optional.ofNullable(tradeMaster)
-                .map(tm -> countryRepo.findByCode(tm.getEntity()))
-                .orElse(null);
-    }
+    // Add more test methods for other utility methods
 
-    private void savePouTradeDetail(PouTradeDetail pouTradeDetail) {
-        Optional.ofNullable(pouTradeDetailRepo.save(pouTradeDetail)).ifPresent(p -> log.info("Info saved to db"));
-    }
+    // You can add more test methods to cover other scenarios in your application
 
-    private void handleException(Exception e) {
-        // Handle the exception appropriately (logging, rethrowing, etc.)
-        e.printStackTrace();
-    }
+}
