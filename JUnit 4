@@ -1,13 +1,13 @@
-import com.yourpackage.AppProperties;
-import org.apache.http.client.HttpClient;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
@@ -18,22 +18,17 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
-import java.io.File;
-import java.security.cert.X509Certificate;
 
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.Mockito.when;
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({ org.apache.http.ssl.SSLContexts.class, SSLContextBuilder.class, HttpClients.class })
+@PrepareForTest({ RestTemplateConfig.class, HttpClientBuilder.class, SSLContext.class })
 public class RestTemplateConfigTest {
 
     @Mock
     @Qualifier(APPLN_PROPS)
     private AppProperties appProps;
-
-    @Spy
-    private RestTemplateConfig restTemplateConfigSpy;
 
     @InjectMocks
     private RestTemplateConfig restTemplateConfig;
@@ -47,27 +42,26 @@ public class RestTemplateConfigTest {
     public void testRestTemplateCreation() throws Exception {
         // Mock the behavior of appProps
         when(appProps.isSslEnabled()).thenReturn(true);
-        when(appProps.getTrustStoreFile()).thenReturn("testTrustStoreFile");
-        when(appProps.getTrustStorePass()).thenReturn("testTrustStorePass");
 
         // Mock static methods
+        PowerMockito.mockStatic(HttpClientBuilder.class);
         PowerMockito.mockStatic(SSLContext.class);
+
+        // Mock HttpClientBuilder
+        CloseableHttpResponse httpResponseMock = PowerMockito.mock(CloseableHttpResponse.class);
+        CloseableHttpClient httpClientMock = PowerMockito.mock(CloseableHttpClient.class);
+        PowerMockito.when(HttpClientBuilder.create()).thenReturn(HttpClientBuilder.create());
+        PowerMockito.when(HttpClientBuilder.create().setSSLSocketFactory(Mockito.any(SSLConnectionSocketFactory.class)))
+                .thenReturn(HttpClientBuilder.create());
+        PowerMockito.when(HttpClientBuilder.create().build()).thenReturn(httpClientMock);
+        PowerMockito.when(httpClientMock.execute(Mockito.any())).thenReturn(httpResponseMock);
+
+        // Mock SSLContext
         PowerMockito.when(SSLContext.getDefault()).thenReturn(null);
         PowerMockito.when(SSLContext.getInstance("TLS")).thenReturn(null);
 
-        // Mock constructor
-        SSLContextBuilder sslContextBuilderMock = PowerMockito.mock(SSLContextBuilder.class);
-        PowerMockito.whenNew(SSLContextBuilder.class).withNoArguments().thenReturn(sslContextBuilderMock);
-        PowerMockito.when(sslContextBuilderMock.loadTrustMaterial(new File("testTrustStoreFile"), "testTrustStorePass".toCharArray()))
-                .thenReturn(null);
-
-        // Mock static method from HttpClients
-        PowerMockito.mockStatic(HttpClients.class);
-        PowerMockito.when(HttpClients.custom().setSSLSocketFactory(null)).thenReturn(HttpClients.custom());
-        PowerMockito.when(HttpClients.custom().build()).thenReturn(mock(HttpClient.class));
-
         // Call the method that creates RestTemplate
-        RestTemplate restTemplate = restTemplateConfigSpy.restTemplate();
+        RestTemplate restTemplate = restTemplateConfig.restTemplate();
 
         // Assert that the restTemplate is not null
         assertNotNull(restTemplate);
