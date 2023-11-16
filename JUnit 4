@@ -1,4 +1,4 @@
-
+import com.yourpackage.AppProperties;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -50,10 +50,17 @@ public class RestTemplateConfigTest {
         // Mock HttpClientBuilder
         CloseableHttpResponse httpResponseMock = PowerMockito.mock(CloseableHttpResponse.class);
         CloseableHttpClient httpClientMock = PowerMockito.mock(CloseableHttpClient.class);
+        
+        // Mock the creation of HttpClientBuilder
         PowerMockito.when(HttpClientBuilder.create()).thenReturn(HttpClientBuilder.create());
+
+        // Mock HttpClientBuilder.setSSLSocketFactory
         PowerMockito.when(HttpClientBuilder.create().setSSLSocketFactory(Mockito.any(SSLConnectionSocketFactory.class)))
                 .thenReturn(HttpClientBuilder.create());
+
+        // Mock HttpClientBuilder.build
         PowerMockito.when(HttpClientBuilder.create().build()).thenReturn(httpClientMock);
+
         PowerMockito.when(httpClientMock.execute(Mockito.any())).thenReturn(httpResponseMock);
 
         // Mock SSLContext
