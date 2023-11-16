@@ -21,10 +21,11 @@ import java.io.File;
 import java.security.cert.X509Certificate;
 
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({RestTemplateConfig.class, File.class, SSLContextBuilder.class, org.apache.http.ssl.SSLContexts.class})
+@PrepareForTest({RestTemplateConfig.class, SSLContextBuilder.class, org.apache.http.ssl.SSLContexts.class})
 public class RestTemplateConfigTest {
 
     @Mock
@@ -37,9 +38,9 @@ public class RestTemplateConfigTest {
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        PowerMockito.mockStatic(File.class);
-        PowerMockito.mockStatic(SSLContextBuilder.class);
-        PowerMockito.mockStatic(org.apache.http.ssl.SSLContexts.class);
+        PowerMockito.mock(SSLContext.class);
+        PowerMockito.mock(SSLContextBuilder.class);
+        PowerMockito.mock(org.apache.http.ssl.SSLContexts.class);
     }
 
     @Test
@@ -49,7 +50,7 @@ public class RestTemplateConfigTest {
         when(appProps.getTrustStoreFile()).thenReturn("testTrustStoreFile");
         when(appProps.getTrustStorePass()).thenReturn("testTrustStorePass");
 
-        // Mock static methods
+        // Mock non-static methods
         PowerMockito.when(org.apache.http.ssl.SSLContexts.custom().loadTrustMaterial(null, any())).thenReturn(SSLContext.getDefault());
         PowerMockito.whenNew(File.class).withArguments("testTrustStoreFile").thenReturn(null);
         PowerMockito.whenNew(SSLContextBuilder.class).thenReturn(SSLContextBuilder.class);
