@@ -1,0 +1,67 @@
+import com.yourpackage.AppProperties;
+import org.apache.http.client.HttpClient;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.powermock.api.mockito.PowerMockito;
+import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+import javax.net.ssl.SSLContext;
+import java.io.File;
+import java.security.cert.X509Certificate;
+
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.when;
+
+@RunWith(PowerMockRunner.class)
+@PrepareForTest({RestTemplateConfig.class, File.class, SSLContextBuilder.class, org.apache.http.ssl.SSLContexts.class})
+public class RestTemplateConfigTest {
+
+    @Mock
+    @Qualifier(APPLN_PROPS)
+    private AppProperties appProps;
+
+    @InjectMocks
+    private RestTemplateConfig restTemplateConfig;
+
+    @Before
+    public void setUp() {
+        MockitoAnnotations.initMocks(this);
+        PowerMockito.mockStatic(File.class);
+        PowerMockito.mockStatic(SSLContextBuilder.class);
+        PowerMockito.mockStatic(org.apache.http.ssl.SSLContexts.class);
+    }
+
+    @Test
+    public void testRestTemplateCreation() throws Exception {
+        // Mock the behavior of appProps
+        when(appProps.isSslEnabled()).thenReturn(true);
+        when(appProps.getTrustStoreFile()).thenReturn("testTrustStoreFile");
+        when(appProps.getTrustStorePass()).thenReturn("testTrustStorePass");
+
+        // Mock static methods
+        PowerMockito.when(org.apache.http.ssl.SSLContexts.custom().loadTrustMaterial(null, any())).thenReturn(SSLContext.getDefault());
+        PowerMockito.whenNew(File.class).withArguments("testTrustStoreFile").thenReturn(null);
+        PowerMockito.whenNew(SSLContextBuilder.class).thenReturn(SSLContextBuilder.class);
+        PowerMockito.when(SSLContextBuilder.loadTrustMaterial(null, any())).thenReturn(SSLContextBuilder);
+        PowerMockito.when(SSLContextBuilder.build()).thenReturn(SSLContext.getDefault());
+
+        // Call the method that creates RestTemplate
+        RestTemplate restTemplate = restTemplateConfig.restTemplate();
+
+        // Assert that the restTemplate is not null
+        assertNotNull(restTemplate);
+
+        // Add more assertions based on your expected behavior
+    }
+}
