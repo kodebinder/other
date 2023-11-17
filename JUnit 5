@@ -1,102 +1,94 @@
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.boot.ExitCodeEvent;
-import org.springframework.boot.SpringApplication;
-import org.springframework.context.ApplicationContext;
+import org.apache.http.client.HttpClient;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.ssl.SSLContextBuilder;
+import org.apache.http.ssl.TrustStrategy;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.util.Arrays;
-import java.util.List;
+import javax.net.ssl.SSLContext;
+import java.io.File;
+import java.security.cert.X509Certificate;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyList;
+@Configuration
+@Slf4j
+public class RestTemplateConfig {
+
+    @Autowired
+    @Qualifier(value = AppConstants.APPLN_PROPS)
+    private AppProperties appProps;
+
+    @Bean
+    public RestTemplate restTemplate() {
+        RestTemplate restTemplate = new RestTemplate();
+        SSLContext sslContext = createSslContext();
+        SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(sslContext);
+        HttpClient httpClient = HttpClients.custom().setSSLSocketFactory(socketFactory).build();
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        ClientHttpRequestFactory bufferFactory = new BufferingClientHttpRequestFactory(factory);
+        restTemplate.setRequestFactory(bufferFactory);
+
+        return restTemplate;
+    }
+
+    private SSLContext createSslContext() {
+        try {
+            if (!appProps.isSslEnabled()) {
+                TrustStrategy acceptingTrustStrategy = (X509Certificate[] chain, String authType) -> true;
+                return SSLContexts.custom()
+                        .loadTrustMaterial(null, acceptingTrustStrategy)
+                        .build();
+            } else {
+                SSLContextBuilder sslContextBuilder = new SSLContextBuilder();
+                return sslContextBuilder
+                        .loadTrustMaterial(new File(appProps.getTrustStoreFile()), appProps.getTrustStorePass().toCharArray())
+                        .build();
+            }
+        } catch (Exception e) {
+            log.error("Error creating SSL context", e);
+            throw new RuntimeException("Error creating SSL context", e);
+        }
+    }
+}
+Now, you can write a test that mocks the createSslContext method to cover the SSL context creation:
+
+java
+Copy code
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class PouSSJobsTest {
-
-    @InjectMocks
-    private PouSSJobs pouSSJobs;
-
-    @Mock(name = "ExpiredJobRunner")
-    private PouSSJobRunner expiredJobRunner;
-
-    @Mock(name = "RetriggerJobRunner")
-    private PouSSJobRunner retriggerJobRunner;
-
-    @Mock(name = "FXQueryJobRunner")
-    private PouSSJobRunner fxQueryJobRunner;
-
-    @Mock(name = "NetSummaryReportJobRunner")
-    private PouSSJobRunner netSummaryReportJobRunner;
+class RestTemplateConfigTest {
 
     @Mock
-    private ApplicationContext context;
+    private AppProperties appProperties;
+
+    @InjectMocks
+    private RestTemplateConfig restTemplateConfig;
+
+    @Mock
+    private SSLContext sslContext;
 
     @Test
-    void testMainMethodWithNoArguments() {
-        String[] args = new String[0];
-        pouSSJobs.main(args);
+    void restTemplateWithoutSSL() throws Exception {
+        // Arrange
+        when(appProperties.isSslEnabled()).thenReturn(false);
+        when(restTemplateConfig.createSslContext()).thenReturn(sslContext);
 
-        // Verify the expected behavior when no arguments are provided
-        verifyNoInteractions(expiredJobRunner, retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
-        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
-        assertEquals(999, exitCodeEvent.getExitCode());
+        // Act
+        RestTemplate restTemplate = restTemplateConfig.restTemplate();
+
+        // Assert
+        assertNotNull(restTemplate);
+        assertInstanceOf(HttpComponentsClientHttpRequestFactory.class, restTemplate.getRequestFactory());
+        assertInstanceOf(RestTemplate.class, restTemplate);
     }
 
-    @Test
-    void testMainMethodWithValidArguments() {
-        String[] args = {"EXPIRED", "arg1", "arg2"};
-        when(expiredJobRunner.execute(anyList())).thenReturn(true);
-
-        pouSSJobs.main(args);
-
-        // Verify the expected behavior when valid arguments are provided for the EXPIRED job
-        verify(expiredJobRunner, times(1)).execute(Arrays.asList("arg1", "arg2"));
-        verifyNoInteractions(retriggerJobRunner, fxQueryJobRunner, netSummaryReportJobRunner);
-        ExitCodeEvent exitCodeEvent = context.getBean(ExitCodeEvent.class);
-        assertEquals(0, exitCodeEvent.getExitCode());
-    }
-
-    @Test
-    void testMainMethodWithInvalidArguments() {
-        String[] args = {"INVALID_JOB_NAME"};
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> pouSSJobs.main(args));
-
-        // Verify the expected behavior when invalid arguments are provided
-        assertEquals("No enum constant com.scb.fm.pou.ss.AppEnums.EodJob.INVALID_JOB_NAME", exception.getMessage());
-    }
-
-    @Test
-    void testGetParams() {
-        String[] args = {"jobName", "arg1", "arg2"};
-        List<String> params = pouSSJobs.getParams(args);
-
-        // Verify that the params list is correctly extracted from the arguments
-        assertEquals(Arrays.asList("arg1", "arg2"), params);
-    }
-
-    @Test
-    void testPrintArgs() {
-        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(outContent));
-
-        String[] args = {"arg1", "arg2"};
-        pouSSJobs.printArgs(args);
-
-        // Verify that the arguments are printed to the console
-        assertEquals("->arg1\n->arg2\n", outContent.toString());
-
-        System.setOut(System.out); // Reset System.out to the original PrintStream
-    }
-
-    // Add more test methods for other utility methods
-
-    // You can add more test methods to cover other scenarios in your application
+    // Other test methods...
 
 }
