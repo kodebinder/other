@@ -1,0 +1,17 @@
+   private static CompletableFuture<Void> scheduleWithDelay(
+            Runnable task, long delay, TimeUnit unit, ScheduledExecutorService scheduler) {
+        CompletableFuture<Void> delayedFuture = new CompletableFuture<>();
+        ScheduledFuture<?> scheduledFuture = scheduler.schedule(() -> {
+            try {
+                task.run();
+                delayedFuture.complete(null);
+            } catch (Throwable ex) {
+                delayedFuture.completeExceptionally(ex);
+            }
+        }, delay, unit);
+
+        // Ensure that if the main CompletableFuture is cancelled, the scheduled task is also cancelled
+        delayedFuture.whenComplete((res, ex) -> scheduledFuture.cancel(false));
+
+        return delayedFuture;
+    }
