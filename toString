@@ -1,0 +1,20 @@
+@Override
+    public String toString() {
+        Map<String, Object> jsonMap = Arrays.stream(getClass().getDeclaredFields())
+                .filter(field -> field.isAnnotationPresent(JsonProperty.class))
+                .collect(Collectors.toMap(
+                        field -> field.getAnnotation(JsonProperty.class).value(),
+                        field -> {
+                            try {
+                                field.setAccessible(true);
+                                return field.get(this);
+                            } catch (IllegalAccessException e) {
+                                // Handle the exception as needed
+                                e.printStackTrace();
+                                return null;
+                            }
+                        }
+                ));
+
+        return new Gson().toJson(jsonMap);
+    }
