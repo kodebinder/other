@@ -1,20 +1,27 @@
-@Override
-    public String toString() {
-        Map<String, Object> jsonMap = Arrays.stream(getClass().getDeclaredFields())
-                .filter(field -> field.isAnnotationPresent(JsonProperty.class))
-                .collect(Collectors.toMap(
-                        field -> field.getAnnotation(JsonProperty.class).value(),
-                        field -> {
-                            try {
-                                field.setAccessible(true);
-                                return field.get(this);
-                            } catch (IllegalAccessException e) {
-                                // Handle the exception as needed
-                                e.printStackTrace();
-                                return null;
-                            }
-                        }
-                ));
+@Test
+    void testToString() {
+        // Arrange
+        PouTradeDetails pouTradeDetails = new PouTradeDetails();
+        pouTradeDetails.setTrade_Id("123");
+        pouTradeDetails.setPou_Message_Id("message123");
+        pouTradeDetails.setTrade_Version(1);
 
-        return new Gson().toJson(jsonMap);
+        DocumentDetail doc1 = new DocumentDetail("doc1", "storage1");
+        DocumentDetail doc2 = new DocumentDetail("doc2", "storage2");
+        List<DocumentDetail> documents = Arrays.asList(doc1, doc2);
+        pouTradeDetails.setDocuments(documents);
+
+        // Act
+        String result = pouTradeDetails.toString();
+
+        // Assert
+        assertNotNull(result);
+        assertTrue(result.contains("\"Trade_Id\": \"123\""));
+        assertTrue(result.contains("\"Pou_Message_Id\": \"message123\""));
+        assertTrue(result.contains("\"Trade_Version\": 1"));
+        assertTrue(result.contains("\"Documents\":"));
+        assertTrue(result.contains("\"Doc_Id\": \"doc1\""));
+        assertTrue(result.contains("\"Storage_Id\": \"storage1\""));
+        assertTrue(result.contains("\"Doc_Id\": \"doc2\""));
+        assertTrue(result.contains("\"Storage_Id\": \"storage2\""));
     }
