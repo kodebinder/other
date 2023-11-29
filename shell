@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Check if module name is provided as an argument
+if [ -z "$1" ]; then
+    echo "Usage: $0 <module_name>"
+    exit 1
+fi
+
+MODULE_NAME=$1
+ENV="uat"
+
+# Step 1: Display running processes for the specified environment and module
+echo "Step 1:"
+./monitor.sh $ENV | grep $MODULE_NAME
+
+# Step 2: Kill the process for the specified module
+echo "Step 2:"
+read -p "Enter the PID to kill: " PID_TO_KILL
+kill -9 $PID_TO_KILL
+
+# Step 3: Start the module again
+echo "Step 3:"
+./start-trade-processor.sh $ENV
